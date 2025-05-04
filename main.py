@@ -9,6 +9,7 @@ def main():
     parser = argparse.ArgumentParser(description="Realisation of Van Ginneken alghorithm")
     parser.add_argument("input_files", nargs=2, help="Technology file, Trace tree file")
     parser.add_argument("--save_graph", action="store_true", help="Save result graph to graph.png")
+    parser.add_argument("--debug", action="store_true", help="Debug mode")
     parser.add_argument("--output_file", help="Output file name", default=None, required=False)
 
     args = parser.parse_args()
@@ -18,7 +19,7 @@ def main():
 
     test_name = os.path.basename(args.input_files[1])[:-5]
 
-    module = vanginneken.Module(params, trace_tree)
+    module = vanginneken.Module(params, trace_tree, args.debug)
     solution = module.start()
     solution.renumber_nodes_and_edges()
 

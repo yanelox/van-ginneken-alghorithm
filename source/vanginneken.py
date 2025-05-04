@@ -1,6 +1,8 @@
 import copy
 import json
 
+debug = False
+
 class Node:
     id : int
     x : int
@@ -22,8 +24,18 @@ class Node:
         self.Q = Q
 
     def dump_dict (self):
-        return {"id" : self.id, "x" : self.x, "y" : self.y, "type" : self.type, "name" : self.name,
-                "children" : self.children}
+        res = {"id" : self.id, "x" : self.x, "y" : self.y, "type" : self.type, "name" : self.name}
+        if self.C:
+            res["capacitance"] = self.C
+
+        if self.Q:
+            res["rat"] = self.Q
+
+        global debug
+        if debug:
+            res["children"] = self.children
+
+        return res
 
     def __str__(self):
         return str(self.dump_dict())
@@ -80,9 +92,14 @@ class Candidate:
 
         edges = [edge.dump_dict() for edge in self.edges]
 
-        res = {"node" : nodes, "edge" : edges, "C" : self.C, "Q" : self.Q}
+        res = {"node" : nodes, "edge" : edges}
         if self.top_edge:
             res["top_edge"] = {"id" : self.top_edge.id, "vertices" : self.top_edge.vertices, "segments" : self.top_edge.segments}
+
+        global debug
+        if debug:
+            res["C"] = self.C
+            res["Q"] = self.Q
 
         return res
 
@@ -121,7 +138,10 @@ class Module:
             yield start
             start += 1
 
-    def __init__(self, params, _trace_tree):
+    def __init__(self, params, _trace_tree, _debug = False):
+        global debug
+        debug = _debug
+
         trace_tree = copy.deepcopy(_trace_tree)
         self.D_intr = params['module'][0]['input'][0]['intrinsic_delay']
         self.C_buf  = params['module'][0]['input'][0]['C']
@@ -271,26 +291,42 @@ class Module:
         res_solutions = child_solutions
 
         for seg_index in range(len(edge.segments) - 1):
-            cur_x = edge.segments[seg_index][0]
-            cur_y = edge.segments[seg_index][1]
+            start_x = cur_x = edge.segments[seg_index][0]
+            start_y = cur_y = edge.segments[seg_index][1]
 
-            x_step = 0 if edge.segments[seg_index][0] == edge.segments[seg_index + 1][0] else 1
-            y_step = 0 if edge.segments[seg_index][1] == edge.segments[seg_index + 1][1] else 1
+            end_x = edge.segments[seg_index + 1][0]
+            end_y = edge.segments[seg_index + 1][1]
+
+            left_x = min(start_x, end_x)
+            right_x = max(start_x, end_x)
+
+            left_y = min(start_y, end_y)
+            right_y = max(start_y, end_y)
+
+            x_step = 0
+            y_step = 0
+
+            if start_x == end_x:
+                y_step = 1 if end_y >  start_y else -1
+            elif start_y == end_y:
+                x_step = 1 if end_x >  start_x else -1
+            else:
+                raise RuntimeError
 
             while True:
                 for new_sol in res_solutions:
                     self.increase_top_edge(new_sol, cur_x, cur_y)
 
                 new_solutions_with_buf = [self.try_insert_boof(new_sol, cur_x, cur_y) for new_sol in res_solutions]
-
+                dummy = 0
                 for new_sol_with_buf in new_solutions_with_buf:
                     res_solutions = self.maybe_add_new_sol(res_solutions, new_sol_with_buf)
-
+                dummy = 1
                 cur_x += x_step
                 cur_y += y_step
 
-                if not ((cur_x < edge.segments[seg_index + 1][0] and x_step == 1) or
-                        (cur_y < edge.segments[seg_index + 1][1] and y_step == 1)):
+                if not (((left_x < cur_x < right_x) and x_step != 0) or
+                        ((left_y < cur_y < right_y) and y_step != 0)):
                     break
 
         last_x = edge.segments[-1][0]
